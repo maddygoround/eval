@@ -27,14 +27,14 @@ class EvaluatorConfig:
     compaction_model: str = "claude-sonnet-4-20250514"
     max_tokens: int = 1000
     temperature: float = 0.3
-    log_dir: str = "./logs"
+    log_dir: str = os.path.expanduser("~/.eval_framework/logs")
     pass_threshold: float = 0.7
 
 
 @dataclass
 class DatabaseConfig:
     """Configuration for database storage."""
-    db_path: str = "./evaluations.db"
+    db_path: str = os.path.expanduser("~/.eval_framework/evaluations.db")
 
 
 @dataclass
@@ -52,6 +52,18 @@ class Settings:
     @classmethod
     def from_env(cls) -> "Settings":
         """Load settings from environment variables."""
+        # Define defaults with expansion
+        default_log_dir = os.path.expanduser("~/.eval_framework/logs")
+        default_db_path = os.path.expanduser("~/.eval_framework/evaluations.db")
+
+        # Get from env or use expanded defaults
+        log_dir = os.path.expanduser(os.getenv("LOG_DIR", default_log_dir))
+        db_path = os.path.expanduser(os.getenv("DB_PATH", default_db_path))
+
+        # Ensure directories exist
+        os.makedirs(log_dir, exist_ok=True)
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+
         return cls(
             context=ContextConfig(
                 max_history_items=int(os.getenv("MAX_HISTORY_ITEMS", 20)),
@@ -63,9 +75,10 @@ class Settings:
                 judge_model=os.getenv("JUDGE_MODEL", "anthropic/claude-sonnet-4-5-20250929"),
                 petri_judge_model=os.getenv("PETRI_JUDGE_MODEL", "claude-opus-4-1-20250805"),
                 pass_threshold=float(os.getenv("PASS_THRESHOLD", 0.7)),
+                log_dir=log_dir,
             ),
             database=DatabaseConfig(
-                db_path=os.getenv("DB_PATH", "./evaluations.db"),
+                db_path=db_path,
             ),
         )
 

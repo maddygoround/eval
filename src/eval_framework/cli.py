@@ -8,12 +8,6 @@ import argparse
 import asyncio
 import sys
 
-import nest_asyncio
-
-# Apply nest_asyncio early to allow nested event loops
-# Required for running Inspect AI within MCP server's async context
-nest_asyncio.apply()
-
 from .server.app import run_server
 
 

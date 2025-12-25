@@ -10,14 +10,12 @@ from datetime import datetime
 from .session import get_session
 from ..utils.helpers import (
     get_risk_level,
-    collect_warnings,
-    generate_suggestions,
     generate_session_recommendations
 )
 from ..config.settings import settings
 
 
-async def evaluate_response_handler(args: Dict[str, Any]) -> Dict[str, Any]:
+def evaluate_response_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Main evaluation handler using Inspect AI + Petri patterns.
 
@@ -35,6 +33,7 @@ async def evaluate_response_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     tools_used = args.get("tools_used", [])
     model = args.get("model", "unknown")
     modified_files = args.get("modified_files", [])
+    tool_call_log = args.get("tool_call_log", [])
     use_accumulated = args.get("use_accumulated_context", True)
 
     # Build full context: accumulated session context + provided context
@@ -50,51 +49,47 @@ async def evaluate_response_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         full_context = provided_context
 
     # Run comprehensive evaluation with full context
-    evaluation = await session.evaluator.evaluate_comprehensive(
+    evaluation = session.evaluator.evaluate_comprehensive(
         response=response,
         context=full_context,
         tools_available=tools_available,
         tools_used=tools_used,
-        modified_files=modified_files
+        modified_files=modified_files,
+        tool_call_log=tool_call_log
     )
 
-    # Use Petri-style judge for behavioral assessment
-    judge_result = await session.judge.evaluate(
-        context=full_context,
-        response=response,
-        tools_available=tools_available,
-        tools_used=tools_used
-    )
+    # Calculate overall score from evaluation results
+    hallucination_score = evaluation.get("hallucination_score", 1.0)
+    tool_consistency_score = evaluation.get("tool_consistency_score", 1.0)
+    petri_score = evaluation.get("petri_score", 1.0)
+    overall_score = (hallucination_score + tool_consistency_score + petri_score) / 3
 
-    # Combine results
+    # Build result from Inspect AI evaluation
     result = {
         "timestamp": datetime.now().isoformat(),
         "model": model,
-        "overall_score": evaluation["overall_score"],
-        "risk_level": get_risk_level(evaluation["overall_score"]),
+        "overall_score": round(overall_score, 3),
+        "risk_level": get_risk_level(overall_score),
         "dimensions": {
             "hallucination": {
-                "score": evaluation["hallucination_score"],
-                "issues": evaluation["hallucinations"],
-                "count": len(evaluation["hallucinations"])
+                "score": hallucination_score,
+                "explanation": evaluation.get("hallucination_explanation", "")
             },
             "tool_consistency": {
-                "score": evaluation["tool_consistency_score"],
-                "issues": evaluation["tool_mismatches"]
+                "score": tool_consistency_score,
+                "explanation": evaluation.get("tool_consistency_explanation", "")
             },
-            "context_consistency": {
-                "score": evaluation["context_consistency_score"],
-                "contradictions": evaluation["contradictions"]
-            },
-            "confidence_calibration": {
-                "score": evaluation["confidence_score"],
-                "overconfident_claims": evaluation["overconfident_claims"]
+            "petri_evaluation": {
+                "score": petri_score,
+                "explanation": evaluation.get("petri_explanation", ""),
+                "dimensions": evaluation.get("petri_dimensions", []),
+                "critical_issues": evaluation.get("petri_issues", []),
+                "recommendations": evaluation.get("petri_recommendations", [])
             }
         },
-        "judge_assessment": judge_result,
-        "warnings": collect_warnings(evaluation),
-        "suggestions": generate_suggestions(evaluation, judge_result),
-        "pass": evaluation["overall_score"] >= settings.evaluator.pass_threshold
+        "warnings": evaluation.get("petri_issues", []),
+        "suggestions": evaluation.get("petri_recommendations", []),
+        "pass": overall_score >= settings.evaluator.pass_threshold
     }
 
     # Store evaluation
@@ -116,7 +111,7 @@ async def evaluate_response_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
-async def check_hallucinations_handler(args: Dict[str, Any]) -> Dict[str, Any]:
+def check_hallucinations_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Quick hallucination check handler.
 
@@ -131,7 +126,7 @@ async def check_hallucinations_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     response = args["response"]
     strict_mode = args.get("strict_mode", False)
 
-    hallucinations = await session.evaluator.detect_hallucinations(
+    hallucinations = session.evaluator.detect_hallucinations(
         response=response,
         strict=strict_mode
     )
@@ -148,7 +143,7 @@ async def check_hallucinations_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def verify_tool_consistency_handler(args: Dict[str, Any]) -> Dict[str, Any]:
+def verify_tool_consistency_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Verify tool usage consistency handler.
 
@@ -164,7 +159,7 @@ async def verify_tool_consistency_handler(args: Dict[str, Any]) -> Dict[str, Any
     tools_available = args["tools_available"]
     tools_used = args["tools_used"]
 
-    issues = await session.evaluator.verify_tool_consistency(
+    issues = session.evaluator.verify_tool_consistency(
         response=response,
         tools_available=tools_available,
         tools_used=tools_used
@@ -180,7 +175,7 @@ async def verify_tool_consistency_handler(args: Dict[str, Any]) -> Dict[str, Any
     }
 
 
-async def compare_models_handler(args: Dict[str, Any]) -> Dict[str, Any]:
+def compare_models_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Compare multiple model responses handler.
 
@@ -197,15 +192,22 @@ async def compare_models_handler(args: Dict[str, Any]) -> Dict[str, Any]:
 
     results = []
     for item in responses:
-        eval_result = await session.evaluator.evaluate_comprehensive(
+        eval_result = session.evaluator.evaluate_comprehensive(
             response=item["response"],
             context=context
         )
+        # Calculate overall score from the three dimensions
+        hallucination_score = eval_result.get("hallucination_score", 1.0)
+        tool_score = eval_result.get("tool_consistency_score", 1.0)
+        petri_score = eval_result.get("petri_score", 1.0)
+        overall = (hallucination_score + tool_score + petri_score) / 3
+
         results.append({
             "model": item["model"],
-            "score": eval_result["overall_score"],
-            "hallucination_count": len(eval_result["hallucinations"]),
-            "consistency_score": eval_result["context_consistency_score"]
+            "score": round(overall, 3),
+            "hallucination_score": hallucination_score,
+            "tool_consistency_score": tool_score,
+            "petri_score": petri_score
         })
 
     # Sort by score
@@ -218,7 +220,7 @@ async def compare_models_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-async def session_report_handler(args: Dict[str, Any]) -> Dict[str, Any]:
+def session_report_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Generate session report handler.
 
@@ -244,34 +246,36 @@ async def session_report_handler(args: Dict[str, Any]) -> Dict[str, Any]:
 
     # Calculate statistics
     total = len(evaluations)
-    total_hallucinations = sum(
-        e["dimensions"]["hallucination"]["count"] for e in evaluations
-    )
     avg_score = sum(e["overall_score"] for e in evaluations) / total
 
-    # Count issues by type
-    issues_summary = {
-        "hallucinations": total_hallucinations,
-        "tool_mismatches": sum(
-            len(e["dimensions"]["tool_consistency"]["issues"])
-            for e in evaluations
-        ),
-        "contradictions": sum(
-            len(e["dimensions"]["context_consistency"]["contradictions"])
-            for e in evaluations
-        ),
-        "overconfident_claims": sum(
-            len(e["dimensions"]["confidence_calibration"]["overconfident_claims"])
-            for e in evaluations
-        )
-    }
+    # Calculate average scores by dimension
+    avg_hallucination = sum(
+        e["dimensions"]["hallucination"]["score"] for e in evaluations
+    ) / total
+    avg_tool_consistency = sum(
+        e["dimensions"]["tool_consistency"]["score"] for e in evaluations
+    ) / total
+    avg_petri = sum(
+        e["dimensions"]["petri_evaluation"]["score"] for e in evaluations
+    ) / total
+
+    # Count critical issues from petri evaluations
+    total_critical_issues = sum(
+        len(e["dimensions"]["petri_evaluation"].get("critical_issues", []))
+        for e in evaluations
+    )
 
     report = {
         "session_id": session_id,
         "total_evaluations": total,
         "average_score": round(avg_score, 3),
         "pass_rate": sum(1 for e in evaluations if e["pass"]) / total,
-        "issues_summary": issues_summary,
+        "dimension_averages": {
+            "hallucination": round(avg_hallucination, 3),
+            "tool_consistency": round(avg_tool_consistency, 3),
+            "petri_evaluation": round(avg_petri, 3)
+        },
+        "total_critical_issues": total_critical_issues,
         "risk_distribution": {
             "high": sum(1 for e in evaluations if e["risk_level"] == "high"),
             "medium": sum(1 for e in evaluations if e["risk_level"] == "medium"),
@@ -285,7 +289,8 @@ async def session_report_handler(args: Dict[str, Any]) -> Dict[str, Any]:
             {
                 "index": i,
                 "score": e["overall_score"],
-                "warnings": e["warnings"]
+                "warnings": e.get("warnings", []),
+                "critical_issues": e["dimensions"]["petri_evaluation"].get("critical_issues", [])
             }
             for i, e in enumerate(evaluations) if not e["pass"]
         ]
@@ -293,7 +298,7 @@ async def session_report_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     return report
 
 
-async def start_session_handler(args: Dict[str, Any]) -> Dict[str, Any]:
+def start_session_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Start new evaluation session handler.
 

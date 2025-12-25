@@ -134,25 +134,36 @@ def generate_session_recommendations(
 
     recommendations = []
 
-    # Calculate hallucination rate
-    hallucination_rate = sum(
-        e.get("dimensions", {}).get("hallucination", {}).get("count", 0)
+    # Calculate average hallucination score (lower = more hallucinations)
+    avg_hallucination_score = sum(
+        e.get("dimensions", {}).get("hallucination", {}).get("score", 1.0)
         for e in evaluations
     ) / len(evaluations)
 
-    if hallucination_rate > 2:
+    if avg_hallucination_score < 0.6:
         recommendations.append(
             "High hallucination rate detected - consider stricter system prompts or different model"
         )
 
-    # Tool issues
-    tool_issues = sum(
-        len(e.get("dimensions", {}).get("tool_consistency", {}).get("issues", []))
+    # Tool consistency score
+    avg_tool_score = sum(
+        e.get("dimensions", {}).get("tool_consistency", {}).get("score", 1.0)
         for e in evaluations
-    )
-    if tool_issues > len(evaluations) * 0.3:
+    ) / len(evaluations)
+
+    if avg_tool_score < 0.7:
         recommendations.append(
             "Frequent tool consistency issues - review tool calling logic"
+        )
+
+    # Petri evaluation critical issues
+    total_critical = sum(
+        len(e.get("dimensions", {}).get("petri_evaluation", {}).get("critical_issues", []))
+        for e in evaluations
+    )
+    if total_critical > 0:
+        recommendations.append(
+            f"Found {total_critical} critical issue(s) across evaluations - review petri assessment"
         )
 
     # Average score

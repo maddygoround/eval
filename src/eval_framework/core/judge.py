@@ -89,7 +89,7 @@ class PetriJudge:
         self.judge_model = judge_model or settings.evaluator.petri_judge_model
         self.client = anthropic.Anthropic()
 
-    async def evaluate(
+    def evaluate(
         self,
         context: str,
         response: str,
@@ -263,7 +263,7 @@ Provide your evaluation:"""
         issues = ", ".join([d["name"] for d in low_scores])
         return f"Issues detected in: {issues}"
 
-    async def evaluate_batch(
+    def evaluate_batch(
         self,
         evaluations: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
@@ -281,7 +281,7 @@ Provide your evaluation:"""
         results = []
 
         for eval_item in evaluations:
-            result = await self.evaluate(
+            result = self.evaluate(
                 context=eval_item.get("context", ""),
                 response=eval_item["response"],
                 tools_available=eval_item.get("tools_available", []),

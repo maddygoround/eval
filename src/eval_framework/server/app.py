@@ -8,12 +8,6 @@ import asyncio
 import json
 from typing import Any
 
-import nest_asyncio
-
-# Apply nest_asyncio BEFORE any event loop starts
-# This is critical for running Inspect AI's async eval within MCP server's event loop
-nest_asyncio.apply()
-
 from mcp.server import Server
 from mcp.types import TextContent
 import mcp.server.stdio
@@ -49,19 +43,19 @@ def create_server() -> Server:
     async def call_tool(name: str, arguments: Any) -> list[TextContent]:
         """Handle tool calls."""
         try:
-            # Route to appropriate handler
+            # Route to appropriate handler (all handlers are sync)
             if name == "evaluate_response":
-                result = await evaluate_response_handler(arguments)
+                result = evaluate_response_handler(arguments)
             elif name == "check_hallucinations":
-                result = await check_hallucinations_handler(arguments)
+                result = check_hallucinations_handler(arguments)
             elif name == "verify_tool_consistency":
-                result = await verify_tool_consistency_handler(arguments)
+                result = verify_tool_consistency_handler(arguments)
             elif name == "compare_model_responses":
-                result = await compare_models_handler(arguments)
+                result = compare_models_handler(arguments)
             elif name == "get_session_report":
-                result = await session_report_handler(arguments)
+                result = session_report_handler(arguments)
             elif name == "start_evaluation_session":
-                result = await start_session_handler(arguments)
+                result = start_session_handler(arguments)
             elif name == "get_context_stats":
                 result = get_context_stats_handler(arguments)
             elif name == "clear_context":

@@ -51,6 +51,19 @@ Returns detailed analysis with scores and suggestions.""",
                         "items": {"type": "string"},
                         "description": "List of absolute paths to files modified by the agent"
                     },
+                    "tool_call_log": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "tool": {"type": "string", "description": "Name of the tool called"},
+                                "params": {"type": "object", "description": "Parameters passed to the tool"},
+                                "result": {"type": "string", "description": "Result/output from the tool"},
+                                "success": {"type": "boolean", "description": "Whether the call succeeded"}
+                            }
+                        },
+                        "description": "Detailed log of tool calls with parameters and results. Critical for detecting fabricated tool results."
+                    },
                     "use_accumulated_context": {
                         "type": "boolean",
                         "description": "If true (default), uses accumulated session context in addition to provided context",
