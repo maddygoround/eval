@@ -1,10 +1,85 @@
-venv/
+# Python
 __pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Testing
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.hypothesis/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Build
+*.manifest
+*.spec
+
+# Logs
 logs/
-.claude/
+*.log
+
+# Local configuration
+.env
+.env.local
+.env.*.local
 settings.local.json
+
+# Claude Code
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite3
+
+# Documentation (keep README)
 *.md
 !README.md
-.env
-.DS_Store
-*.db
+!ARCHITECTURE.md
+!QUICKSTART.md
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Ruff
+.ruff_cache/

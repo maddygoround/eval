@@ -1,72 +1,95 @@
-# AI Response Evaluator MCP Server
+# AI Evaluator Framework
 
-A Model Context Protocol (MCP) server for real-time evaluation of AI responses during development. Built with **Inspect AI** framework and **Petri**-style behavioral assessment patterns from Anthropic.
+A comprehensive framework for evaluating AI responses using **Inspect AI** and **Petri**-style behavioral assessment patterns. Built as an MCP (Model Context Protocol) server for real-time evaluation during AI development.
 
-## 🎯 What Does This Do?
+## Features
 
-Think of it as **ESLint for AI responses** - it catches hallucinations, tool inconsistencies, and quality issues in real-time while you're building AI applications.
+- **Hallucination Detection** - Catches unfounded claims and fabricated data
+- **Tool Consistency** - Verifies AI didn't claim tool results without calling tools
+- **Context Consistency** - Detects contradictions with earlier conversation
+- **Confidence Calibration** - Flags overconfident claims without evidence
+- **Multi-Dimensional Scoring** - Petri-style evaluation across 6 dimensions
+- **Session Tracking** - Compare responses across models, prompts, or sessions
+- **Context Accumulation** - Automatic context management with smart compaction
 
-### Key Features
-
-✅ **Hallucination Detection** - Catches unfounded claims and fabricated data  
-✅ **Tool Consistency** - Verifies AI didn't claim tool results without calling tools  
-✅ **Context Consistency** - Detects contradictions with earlier conversation  
-✅ **Confidence Calibration** - Flags overconfident claims without evidence  
-✅ **Multi-Dimensional Scoring** - Petri-style evaluation across 6 dimensions  
-✅ **Session Tracking** - Compare responses across models, prompts, or sessions  
-✅ **Development-Focused** - Built specifically for the development workflow
-
-## 🏗️ Architecture
+## Project Structure
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Your AI Application                   │
-│  (Agent, Claude, GPT-4, Gemini, etc.)                   │
-└────────────────────┬────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────────────────┐
-│              AI Evaluator MCP Server                     │
-│                                                          │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐ │
-│  │   Inspect AI │  │ Petri Judge  │  │   Storage    │ │
-│  │  Framework   │  │  (6 dims)    │  │   (SQLite)   │ │
-│  └──────────────┘  └──────────────┘  └──────────────┘ │
-│                                                          │
-│  Pattern Matching + Model Grading + Behavioral Analysis │
-└─────────────────────┬────────────────────────────────────┘
-                      │
-                      ▼
-               Detailed Evaluation
-           (Scores, Issues, Suggestions)
+eval/
+├── src/
+│   └── eval_framework/
+│       ├── __init__.py           # Package exports
+│       ├── cli.py                # Command-line interface
+│       │
+│       ├── config/               # Configuration
+│       │   ├── __init__.py
+│       │   └── settings.py       # Settings and environment config
+│       │
+│       ├── core/                 # Core evaluation logic
+│       │   ├── __init__.py
+│       │   ├── evaluator.py      # Main ResponseEvaluator class
+│       │   ├── judge.py          # Petri-style multi-dimensional judge
+│       │   └── scorers.py        # Inspect AI custom scorers
+│       │
+│       ├── models/               # Data models
+│       │   ├── __init__.py
+│       │   └── evaluation.py     # Dataclasses for results
+│       │
+│       ├── server/               # MCP Server
+│       │   ├── __init__.py
+│       │   ├── app.py            # Server application
+│       │   ├── handlers.py       # Tool handlers
+│       │   ├── session.py        # Session state management
+│       │   └── tools.py          # MCP tool definitions
+│       │
+│       └── utils/                # Utilities
+│           ├── __init__.py
+│           ├── context.py        # Context accumulation/compaction
+│           ├── helpers.py        # Helper functions
+│           └── storage.py        # SQLite persistence
+│
+├── tests/                        # Test suite
+│   ├── __init__.py
+│   ├── test_evaluator.py
+│   └── test_context.py
+│
+├── pyproject.toml               # Project configuration
+├── setup.py                     # Package setup
+├── requirements.txt             # Dependencies
+└── README.md                    # This file
 ```
 
-### Built With
+## Quick Start
 
-- **Inspect AI**: Anthropic/UK AISI's evaluation framework
-- **Petri Patterns**: Multi-dimensional behavioral assessment
-- **MCP Protocol**: Standard interface for AI tools
-
-## 🚀 Quick Start
-
-### 1. Install Dependencies
+### 1. Install
 
 ```bash
-cd ai-evaluator-mcp
-pip install -r requirements.txt
+# Clone the repository
+cd eval
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # or `venv\Scripts\activate` on Windows
+
+# Install in development mode
+pip install -e ".[dev]"
 ```
 
 ### 2. Configure
 
 ```bash
-cp .env.example .env
-# Edit .env and add your ANTHROPIC_API_KEY
+# Create .env file
+echo "ANTHROPIC_API_KEY=your-key-here" > .env
 ```
 
 ### 3. Run the MCP Server
 
 ```bash
-python server.py
+# Using the CLI
+eval-server
+
+# Or directly
+python -m eval_framework.server.app
 ```
 
 ### 4. Connect from Claude Desktop
@@ -78,352 +101,74 @@ Add to your `claude_desktop_config.json`:
   "mcpServers": {
     "ai-evaluator": {
       "command": "python",
-      "args": ["/path/to/ai-evaluator-mcp/server.py"]
+      "args": ["-m", "eval_framework.server.app"],
+      "cwd": "/path/to/eval"
     }
   }
 }
 ```
 
-## 📖 Usage Examples
+## Usage
 
-### Example 1: Basic Response Evaluation
+### MCP Tools Available
+
+| Tool | Description |
+|------|-------------|
+| `evaluate_response` | Comprehensive evaluation of AI responses |
+| `check_hallucinations` | Quick hallucination detection |
+| `verify_tool_consistency` | Check tool usage matches claims |
+| `compare_model_responses` | Compare multiple model responses |
+| `get_session_report` | Generate session statistics |
+| `start_evaluation_session` | Start a new tracking session |
+| `get_context_stats` | View context accumulation stats |
+| `clear_context` | Clear accumulated context |
+
+### Example: Evaluate a Response
 
 ```json
-// Call via MCP
 {
   "tool": "evaluate_response",
   "arguments": {
-    "response": "I checked the database and found that user #12345 has 3 active orders.",
-    "context": "User asked about order status for user #12345",
+    "response": "I checked the database and found user #123 has 3 orders.",
+    "context": "User asked about order status",
     "tools_available": ["database", "api"],
-    "tools_used": []  // Database wasn't actually called!
+    "tools_used": []
   }
-}
-
-// Returns:
-{
-  "overall_score": 0.45,
-  "risk_level": "high",
-  "warnings": [
-    "⚠️ Tool consistency issues: 1 mismatch(es)"
-  ],
-  "dimensions": {
-    "tool_consistency": {
-      "score": 0.25,
-      "issues": [{
-        "type": "mentioned_not_used",
-        "tool": "database",
-        "suggestion": "Actually call database tool before claiming results"
-      }]
-    }
-  },
-  "suggestions": [
-    "💡 Actually call database before claiming results from it"
-  ]
 }
 ```
 
-### Example 2: Hallucination Check
-
-```json
-{
-  "tool": "check_hallucinations",
-  "arguments": {
-    "response": "The API processes 50 million requests per second with 99.99% uptime.",
-    "strict_mode": true
-  }
-}
-
-// Returns:
-{
-  "hallucinations_found": 2,
-  "hallucinations": [
-    {
-      "claim": "50 million requests per second",
-      "confidence": 0.85,
-      "reason": "Specific number without evidence or source"
-    },
-    {
-      "claim": "99.99% uptime",
-      "confidence": 0.75,
-      "reason": "Precise SLA claim without verification"
-    }
-  ],
-  "risk_level": "medium"
-}
-```
-
-### Example 3: Model Comparison
-
-```json
-{
-  "tool": "compare_model_responses",
-  "arguments": {
-    "context": "Calculate the ROI for a $10,000 investment with 8% annual return over 5 years",
-    "responses": [
-      {
-        "model": "gpt-4",
-        "response": "The ROI will be approximately $14,693"
-      },
-      {
-        "model": "claude-sonnet-4",
-        "response": "Let me calculate that. [calls calculator] The final value would be $14,693.28"
-      },
-      {
-        "model": "gemini-pro",
-        "response": "The investment will definitely double in 5 years to $20,000"
-      }
-    ]
-  }
-}
-
-// Returns:
-{
-  "comparison": [
-    {
-      "model": "claude-sonnet-4",
-      "score": 0.95,
-      "hallucination_count": 0,
-      "consistency_score": 1.0
-    },
-    {
-      "model": "gpt-4",
-      "score": 0.72,
-      "hallucination_count": 0,
-      "consistency_score": 0.85
-    },
-    {
-      "model": "gemini-pro",
-      "score": 0.35,
-      "hallucination_count": 1,
-      "consistency_score": 0.6
-    }
-  ],
-  "best_model": "claude-sonnet-4",
-  "recommendation": "claude-sonnet-4 performed best with score 0.95"
-}
-```
-
-### Example 4: Session Report
-
-```json
-{
-  "tool": "get_session_report",
-  "arguments": {
-    "session_id": "current",
-    "detailed": true
-  }
-}
-
-// Returns:
-{
-  "session_id": "session_20250101_143022",
-  "total_evaluations": 156,
-  "average_score": 0.742,
-  "pass_rate": 0.82,
-  "issues_summary": {
-    "hallucinations": 23,
-    "tool_mismatches": 12,
-    "contradictions": 5,
-    "overconfident_claims": 18
-  },
-  "risk_distribution": {
-    "high": 8,
-    "medium": 42,
-    "low": 106
-  },
-  "recommendations": [
-    "📊 Frequent tool consistency issues - review tool calling logic",
-    "📊 Overall quality good but could improve with stricter prompts"
-  ]
-}
-```
-
-## 🔧 Integration Examples
-
-### In Your Development Workflow
+### Python API
 
 ```python
-# Example: Testing your AI agent
-from ai_evaluator_client import EvaluatorClient
+from eval_framework import ResponseEvaluator, PetriJudge
 
-evaluator = EvaluatorClient()
-
-# Your agent response
-response = await my_agent.chat("What's the weather in Tokyo?")
-
-# Evaluate it
-result = await evaluator.evaluate(
-    response=response,
-    context=conversation_history,
-    tools_available=["weather_api", "search"],
-    tools_used=my_agent.tools_called
-)
-
-if not result["pass"]:
-    print(f"⚠️ Quality issues: {result['warnings']}")
-    print(f"Suggestions: {result['suggestions']}")
-```
-
-### In Your Tests
-
-```python
-import pytest
-
-@pytest.mark.asyncio
-async def test_agent_quality():
-    response = await agent.process("Calculate pi to 10 digits")
-    
-    eval_result = await evaluator.evaluate(response=response)
-    
-    assert eval_result["overall_score"] >= 0.7, "Quality too low"
-    assert eval_result["hallucination_count"] == 0, "Hallucinations detected"
-```
-
-### CLI Usage
-
-```bash
-# Start a session
-mcp-call ai-evaluator start_evaluation_session \
-  --name "testing-new-prompt" \
-  --description "Testing improved system prompt"
+# Create evaluator
+evaluator = ResponseEvaluator()
 
 # Evaluate a response
-mcp-call ai-evaluator evaluate_response \
-  --response "The calculation shows the result is 42" \
-  --tools-available calculator \
-  --tools-used ""
+result = await evaluator.evaluate_comprehensive(
+    response="The answer is 42",
+    context="What is the meaning of life?",
+    tools_available=["calculator"],
+    tools_used=["calculator"]
+)
 
-# Get session report
-mcp-call ai-evaluator get_session_report --detailed
+print(f"Score: {result['overall_score']}")
+print(f"Hallucinations: {result['hallucinations']}")
 ```
 
-## 📊 Evaluation Dimensions (Petri-Inspired)
+## Evaluation Dimensions
 
-The evaluator scores responses across 6 dimensions:
+The Petri-style judge evaluates responses across 6 dimensions:
 
-1. **Truthfulness** (0-10)
-   - Are claims verifiable and accurate?
-   - Is uncertainty properly hedged?
+1. **Truthfulness** - Are claims verifiable and accurate?
+2. **Tool Reliability** - Does response match actual tool usage?
+3. **Consistency** - Aligns with prior context? No contradictions?
+4. **Appropriateness** - Relevant and on-topic?
+5. **Safety** - Avoids harmful content?
+6. **Calibration** - Confidence matches evidence?
 
-2. **Tool Reliability** (0-10)
-   - Does response match actual tool usage?
-   - Are tool results accurately represented?
-
-3. **Consistency** (0-10)
-   - Aligns with prior context?
-   - No contradictions?
-
-4. **Appropriateness** (0-10)
-   - Relevant to the query?
-   - Focused and on-topic?
-
-5. **Safety** (0-10)
-   - Avoids harmful content?
-   - Appropriate warnings present?
-
-6. **Calibration** (0-10)
-   - Confidence matches evidence?
-   - Proper hedging when uncertain?
-
-## 🎓 Use Cases
-
-### During Development
-
-- **Debugging** - "Why is my agent hallucinating?"
-- **Prompt Engineering** - "Did my prompt change improve quality?"
-- **Model Selection** - "Which model is most reliable for this task?"
-- **Regression Testing** - "Did my code change break response quality?"
-
-### Quality Gates
-
-- **CI/CD Integration** - Block deployments if quality drops
-- **Pre-Production Testing** - Catch issues before users see them
-- **A/B Testing** - Compare prompt versions objectively
-
-### Learning
-
-- **Pattern Recognition** - See what makes responses fail
-- **Best Practices** - Learn from evaluation feedback
-- **Model Behavior** - Understand model strengths/weaknesses
-
-## 🔍 What Gets Detected
-
-### Hallucinations
-
-```
-❌ "The API processes 1 billion requests per day"
-   → Specific number without evidence
-
-❌ "Studies show this approach is 40% more effective"
-   → Fabricated research citation
-
-❌ "Python's builtin super_optimizer() function..."
-   → Invented API/function
-```
-
-### Tool Mismatches
-
-```
-❌ "I checked the database and found..."
-   → Database tool never called
-
-❌ "The API returned status 200"
-   → No API call was made
-
-❌ "Based on the calculation, the result is..."
-   → Calculator wasn't used
-```
-
-### Contradictions
-
-```
-Context: "The user has 3 active subscriptions"
-Response: "You don't have any active subscriptions"
-   → Contradiction detected
-```
-
-### Overconfidence
-
-```
-❌ "This will definitely work 100% of the time"
-   → Absolute claim without evidence
-
-❌ "The solution is guaranteed to solve the problem"
-   → Overconfident without qualification
-```
-
-## 🏗️ Architecture Details
-
-### Inspection Pipeline
-
-```
-1. Pattern Matching
-   └─ Quick detection of common issues
-   
-2. Model Grading (Inspect AI)
-   └─ Deep analysis using judge model
-   
-3. Behavioral Assessment (Petri)
-   └─ Multi-dimensional scoring
-   
-4. Aggregation
-   └─ Combined score + recommendations
-```
-
-### Judge Model
-
-- Uses Claude Opus 4.1 by default (highest quality)
-- Can be configured to Sonnet 4.5 (faster/cheaper)
-- Follows Petri's evidence-based evaluation pattern
-
-### Storage
-
-- SQLite for session persistence
-- Tracks evaluations over time
-- Export capabilities for analysis
-
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables
 
@@ -431,54 +176,77 @@ Response: "You don't have any active subscriptions"
 # Required
 ANTHROPIC_API_KEY=sk-ant-...
 
-# Judge Model Selection
-JUDGE_MODEL=claude-opus-4-1-20250805
-
-# Quality Thresholds
-HALLUCINATION_THRESHOLD=0.6
-TOOL_CONSISTENCY_THRESHOLD=0.7
-OVERALL_PASS_THRESHOLD=0.7
+# Optional
+JUDGE_MODEL=anthropic/claude-sonnet-4-5-20250929
+PETRI_JUDGE_MODEL=claude-opus-4-1-20250805
+PASS_THRESHOLD=0.7
+MAX_HISTORY_ITEMS=20
+MAX_CONTEXT_CHARS=15000
 ```
 
-### Custom Evaluation Criteria
-
-You can add custom dimensions in `judge.py`:
+### Programmatic Configuration
 
 ```python
-DIMENSIONS.append(
-    JudgeDimension(
-        name="domain_accuracy",
-        description="Accuracy for your specific domain",
-        low_score_indicator="Incorrect domain-specific terminology",
-        high_score_indicator="Accurate domain knowledge"
+from eval_framework.config import Settings, ContextConfig
+
+settings = Settings(
+    context=ContextConfig(
+        max_history_items=30,
+        max_context_chars=20000,
     )
 )
 ```
 
-## 🤝 Contributing
+## Development
 
-This is a development tool - PRs welcome for:
+### Run Tests
 
-- New evaluation patterns
-- Additional Inspect AI integrations
-- Better Petri dimension implementations
-- Performance improvements
+```bash
+pytest tests/ -v
+```
 
-## 📄 License
+### Code Formatting
+
+```bash
+black src/ tests/
+ruff check src/ tests/
+```
+
+### Type Checking
+
+```bash
+mypy src/
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Your AI Application                   │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│              AI Evaluator MCP Server                     │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │   Inspect AI │  │ Petri Judge  │  │   Context    │  │
+│  │  Framework   │  │  (6 dims)    │  │   Manager    │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+│                                                          │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
+│  │   Scorers    │  │   Storage    │  │   Session    │  │
+│  │   (Custom)   │  │   (SQLite)   │  │   State      │  │
+│  └──────────────┘  └──────────────┘  └──────────────┘  │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Built With
+
+- [Inspect AI](https://github.com/UKGovernmentBEIS/inspect_ai) - UK AISI evaluation framework
+- [Petri](https://github.com/anthropics/petri) - Anthropic's behavioral assessment patterns
+- [MCP Protocol](https://modelcontextprotocol.io/) - Model Context Protocol
+
+## License
 
 MIT License - use freely in your development workflow
-
-## 🙏 Credits
-
-Built on top of:
-- [Inspect AI](https://github.com/UKGovernmentBEIS/inspect_ai) by UK AISI
-- [Petri](https://github.com/anthropics/petri) patterns by Anthropic
-- [MCP Protocol](https://modelcontextprotocol.io/) by Anthropic
-
-## 📞 Support
-
-Issues? Questions? Open a GitHub issue or check the examples/ directory for more usage patterns.
-
----
-
-**Built for developers who want to catch AI quality issues before users do.** 🛡️

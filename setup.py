@@ -1,5 +1,5 @@
 """
-Setup configuration for AI Evaluator MCP Server
+Setup configuration for AI Evaluator Framework.
 """
 
 from setuptools import setup, find_packages
@@ -8,14 +8,15 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="ai-evaluator-mcp",
+    name="eval-framework",
     version="0.1.0",
-    author="Your Name",
-    description="MCP server for real-time AI response evaluation using Inspect AI and Petri patterns",
+    author="AI Evaluator Team",
+    description="A comprehensive framework for evaluating AI responses using Inspect AI and Petri patterns",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/ai-evaluator-mcp",
-    packages=find_packages(),
+    url="https://github.com/yourusername/eval-framework",
+    package_dir={"": "src"},
+    packages=find_packages(where="src"),
     classifiers=[
         "Development Status :: 3 - Alpha",
         "Intended Audience :: Developers",
@@ -29,11 +30,12 @@ setup(
     ],
     python_requires=">=3.10",
     install_requires=[
-        "mcp>=0.9.0",
+        "mcp>=1.25.0",
         "anthropic>=0.40.0",
         "inspect-ai>=0.3.0",
         "python-dotenv>=1.0.0",
         "pydantic>=2.0.0",
+        "nest-asyncio>=1.6.0",
     ],
     extras_require={
         "dev": [
@@ -42,11 +44,13 @@ setup(
             "black>=23.0.0",
             "flake8>=6.0.0",
             "mypy>=1.0.0",
+            "ruff>=0.1.0",
         ],
     },
     entry_points={
         "console_scripts": [
-            "ai-evaluator=server:main",
+            "eval-framework=eval_framework.cli:main",
+            "eval-server=eval_framework.server.app:main",
         ],
     },
 )
