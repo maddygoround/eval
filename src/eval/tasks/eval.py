@@ -8,13 +8,15 @@ Uses a unified alignment scorer following Petri patterns for efficient
 single-call evaluation across all dimensions.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
+import json
 
 from inspect_ai import Task, eval as inspect_eval
 from inspect_ai.dataset import Sample
 from inspect_ai.solver import Generate, TaskState, solver
-from inspect_ai.model import ModelOutput, ChatMessageUser, ChatMessageAssistant
+from inspect_ai.model import ModelOutput, ChatMessageUser, ChatMessageAssistant, ChatMessageTool
+from inspect_ai.tool import ToolCall
 
 from ..scorers.judge import unified_alignment_scorer
 from ..config.settings import settings
@@ -24,15 +26,156 @@ from ..types import EvaluationResult
 _executor = ThreadPoolExecutor(max_workers=1)
 
 
-@solver
-def playback_solver(response: str):
+def _format_tool_call_log(tool_call_log: List[Dict[str, Any]]) -> str:
     """
-    Validation solver that simply returns a pre-determined response.
-    Used to evaluate existing responses using the Inspect AI framework.
+    Format tool call log into a structured, readable format for the judge.
+
+    Args:
+        tool_call_log: List of tool call records with name, arguments, result, etc.
+
+    Returns:
+        Formatted string representation of tool calls.
+    """
+    if not tool_call_log:
+        return "[No tool calls recorded]"
+
+    formatted_calls = []
+    for i, call in enumerate(tool_call_log, 1):
+        tool_name = call.get("name") or call.get("tool") or call.get("function", "unknown")
+        tool_args = call.get("arguments") or call.get("args") or call.get("input", {})
+        tool_result = call.get("result") or call.get("output") or call.get("response", "")
+        tool_error = call.get("error") or call.get("exception", "")
+        tool_id = call.get("id") or call.get("call_id") or f"call_{i}"
+
+        # Format arguments nicely
+        if isinstance(tool_args, dict):
+            args_str = json.dumps(tool_args, indent=2)
+        else:
+            args_str = str(tool_args)
+
+        # Format result (truncate if too long)
+        if isinstance(tool_result, dict):
+            result_str = json.dumps(tool_result, indent=2)
+        else:
+            result_str = str(tool_result)
+
+        if len(result_str) > 2000:
+            result_str = result_str[:2000] + "... [truncated]"
+
+        call_entry = f"""
+--- Tool Call #{i} [{tool_id}] ---
+Function: {tool_name}
+Arguments:
+{args_str}
+Result:
+{result_str}"""
+
+        if tool_error:
+            call_entry += f"\nError: {tool_error}"
+
+        formatted_calls.append(call_entry)
+
+    return "\n".join(formatted_calls)
+
+
+def _build_tool_messages(
+    tool_call_log: List[Dict[str, Any]]
+) -> tuple[List[ToolCall], List[ChatMessageTool]]:
+    """
+    Convert tool call log into Inspect AI message format.
+
+    Args:
+        tool_call_log: List of tool call records.
+
+    Returns:
+        Tuple of (tool_calls for assistant message, tool result messages).
+    """
+    tool_calls = []
+    tool_messages = []
+
+    for i, call in enumerate(tool_call_log or [], 1):
+        tool_name = call.get("name") or call.get("tool") or call.get("function", "unknown")
+        tool_args = call.get("arguments") or call.get("args") or call.get("input", {})
+        tool_result = call.get("result") or call.get("output") or call.get("response", "")
+        tool_error = call.get("error") or call.get("exception")
+        tool_id = call.get("id") or call.get("call_id") or f"call_{i}"
+
+        # Ensure args is a dict
+        if not isinstance(tool_args, dict):
+            tool_args = {"input": str(tool_args)}
+
+        # Create ToolCall object
+        tc = ToolCall(
+            id=tool_id,
+            function=tool_name,
+            arguments=tool_args,
+            type="function"
+        )
+        tool_calls.append(tc)
+
+        # Format result as string
+        if isinstance(tool_result, dict):
+            result_content = json.dumps(tool_result, indent=2)
+        else:
+            result_content = str(tool_result)
+
+        # Create tool result message
+        tool_msg = ChatMessageTool(
+            content=result_content,
+            tool_call_id=tool_id,
+            function=tool_name
+        )
+        # Add error if present
+        if tool_error:
+            tool_msg = ChatMessageTool(
+                content=result_content,
+                tool_call_id=tool_id,
+                function=tool_name,
+                error={"message": str(tool_error)}
+            )
+
+        tool_messages.append(tool_msg)
+
+    return tool_calls, tool_messages
+
+
+@solver
+def playback_solver(
+    response: str,
+    tool_call_log: Optional[List[Dict[str, Any]]] = None
+):
+    """
+    Validation solver that replays a conversation including tool calls.
+
+    Used to evaluate existing responses using the Inspect AI framework,
+    with full tool call history for accurate tool consistency evaluation.
+
+    Args:
+        response: The assistant's final response text.
+        tool_call_log: Optional list of tool calls made during the interaction.
     """
     async def solve(state: TaskState, generate: Generate):
+        # Add user message
         state.messages.append(ChatMessageUser(content=state.input_text))
+
+        # If we have tool calls, inject them into the message history
+        if tool_call_log:
+            tool_calls, tool_messages = _build_tool_messages(tool_call_log)
+
+            # Add assistant message with tool calls
+            state.messages.append(ChatMessageAssistant(
+                content="",  # Content is empty when making tool calls
+                tool_calls=tool_calls
+            ))
+
+            # Add tool result messages
+            for tool_msg in tool_messages:
+                state.messages.append(tool_msg)
+
+        # Add final assistant response
         state.messages.append(ChatMessageAssistant(content=response))
+
+        # Set the output
         state.output = ModelOutput(
             model=state.model.name,
             completion=str(response),
@@ -100,25 +243,36 @@ class Evaluator:
                     file_section += f"File: {file_path}\nError reading file: {e}\n----------------\n"
             context += file_section
 
-        if tool_call_log:
-            context += f"\n\n[TOOL CALL LOG]\n{str(tool_call_log)}\n"
+        # Format tool call log with structured output
+        formatted_tool_log = _format_tool_call_log(tool_call_log) if tool_call_log else ""
+        if formatted_tool_log and formatted_tool_log != "[No tool calls recorded]":
+            context += f"\n\n[TOOL CALL LOG]\n{formatted_tool_log}\n"
+
+        # Build tools_used from tool_call_log if not explicitly provided
+        if tool_call_log and not tools_used:
+            tools_used = list(set(
+                call.get("name") or call.get("tool") or call.get("function", "unknown")
+                for call in tool_call_log
+            ))
 
         # Prepare metadata for scorer
         metadata = {
             "context": context,
             "tools_available": str(tools_available or []),
             "tools_used": str(tools_used or []),
-            "modified_files": modified_files or []
+            "modified_files": modified_files or [],
+            "tool_call_log": tool_call_log or []
         }
 
         # Create single unified evaluation task
+        # Pass tool_call_log to playback_solver for message injection
         unified_task = Task(
             dataset=[Sample(
                 input="Comprehensive alignment evaluation",
                 target="High quality response",
                 metadata=metadata
             )],
-            plan=[playback_solver(response)],
+            plan=[playback_solver(response, tool_call_log=tool_call_log)],
             scorer=unified_alignment_scorer(judge_model=settings.evaluator.judge_model),
             name="unified_alignment_eval"
         )

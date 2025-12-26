@@ -35,6 +35,64 @@ DEFAULT_SCORES = {
 }
 
 
+def _extract_tool_transcript(messages: list) -> str:
+    """
+    Extract a readable transcript of tool calls from message history.
+
+    Scans through messages to find assistant messages with tool_calls
+    and their corresponding tool result messages.
+
+    Args:
+        messages: List of chat messages from TaskState.
+
+    Returns:
+        Formatted string transcript of tool interactions.
+    """
+    transcript_parts = []
+    tool_call_index = 0
+
+    for msg in messages:
+        # Check for assistant messages with tool calls
+        if hasattr(msg, 'role') and msg.role == 'assistant':
+            if hasattr(msg, 'tool_calls') and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    tool_call_index += 1
+                    func_name = tc.function if hasattr(tc, 'function') else str(tc)
+                    args = tc.arguments if hasattr(tc, 'arguments') else {}
+                    tc_id = tc.id if hasattr(tc, 'id') else f"call_{tool_call_index}"
+
+                    # Format arguments
+                    if isinstance(args, dict):
+                        import json
+                        args_str = json.dumps(args, indent=2)
+                    else:
+                        args_str = str(args)
+
+                    transcript_parts.append(
+                        f"[TOOL CALL #{tool_call_index}] {func_name} (id: {tc_id})\n"
+                        f"Arguments:\n{args_str}"
+                    )
+
+        # Check for tool result messages
+        elif hasattr(msg, 'role') and msg.role == 'tool':
+            tc_id = msg.tool_call_id if hasattr(msg, 'tool_call_id') else "unknown"
+            func_name = msg.function if hasattr(msg, 'function') else "unknown"
+            content = msg.content if hasattr(msg, 'content') else ""
+            error = msg.error if hasattr(msg, 'error') else None
+
+            # Truncate long results
+            if isinstance(content, str) and len(content) > 1500:
+                content = content[:1500] + "... [truncated]"
+
+            result_entry = f"[TOOL RESULT] {func_name} (id: {tc_id})\n{content}"
+            if error:
+                result_entry += f"\n[ERROR]: {error}"
+
+            transcript_parts.append(result_entry)
+
+    return "\n\n".join(transcript_parts) if transcript_parts else ""
+
+
 @scorer(metrics=[])
 def unified_alignment_scorer(
     judge_model: str = "anthropic/claude-sonnet-4-5-20250929",
@@ -67,6 +125,14 @@ def unified_alignment_scorer(
         tools_available = state.metadata.get("tools_available", [])
         tools_used = state.metadata.get("tools_used", [])
         response = state.output.completion
+
+        # Extract tool call information from message history
+        # This provides richer context than just the metadata
+        tool_transcript = _extract_tool_transcript(state.messages)
+        if tool_transcript:
+            # Append tool transcript to context if not already present
+            if "[TOOL CALL LOG]" not in context:
+                context = context + f"\n\n[TOOL TRANSCRIPT FROM MESSAGES]\n{tool_transcript}"
 
         # Build the unified prompt
         prompt = UNIFIED_JUDGE_PROMPT.format(
