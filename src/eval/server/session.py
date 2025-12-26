@@ -9,10 +9,9 @@ from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from ..utils.context import ContextManager
-from ..utils.storage import EvaluationStorage
-from ..core.evaluator import ResponseEvaluator
-from ..core.judge import PetriJudge
+from ..context import ContextManager
+from ..stores import EvaluationStorage
+from ..tasks.eval import Evaluator
 
 
 @dataclass
@@ -32,8 +31,7 @@ class SessionState:
     # Components
     context_manager: ContextManager = field(default_factory=ContextManager)
     storage: EvaluationStorage = field(default_factory=EvaluationStorage)
-    evaluator: ResponseEvaluator = field(default_factory=ResponseEvaluator)
-    judge: PetriJudge = field(default_factory=PetriJudge)
+    evaluator: Evaluator = field(default_factory=Evaluator)
 
     def start_session(
         self,

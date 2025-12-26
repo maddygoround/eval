@@ -1,5 +1,5 @@
 """
-Setup configuration for AI Evaluator Framework.
+Setup configuration for Eval.
 """
 
 from setuptools import setup, find_packages
@@ -8,13 +8,13 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="eval-framework",
-    version="0.1.0",
-    author="AI Evaluator Team",
+    name="eval",
+    version="0.4.0",
+    author="Eval Team",
     description="A comprehensive framework for evaluating AI responses using Inspect AI and Petri patterns",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/yourusername/eval-framework",
+    url="https://github.com/yourusername/eval",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     classifiers=[
@@ -49,8 +49,8 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "eval-framework=eval_framework.cli:main",
-            "eval-server=eval_framework.server.app:main",
+            "eval=eval.cli:main",
+            "eval-server=eval.server.app:main",
         ],
     },
 )

@@ -4,11 +4,11 @@ MCP Tool Handlers for AI Evaluator.
 This module implements the handler functions for each MCP tool.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict
 from datetime import datetime
 
 from .session import get_session
-from ..utils.helpers import (
+from ..utils import (
     get_risk_level,
     generate_session_recommendations
 )
@@ -31,7 +31,17 @@ def evaluate_response_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     provided_context = args.get("context", "")
     tools_available = args.get("tools_available", [])
     tools_used = args.get("tools_used", [])
-    model = args.get("model", "unknown")
+    import os
+    # Priority: 1. ENV/Settings (JUDGE_MODEL) 2. Tool Argument
+    env_model = os.getenv("JUDGE_MODEL") or settings.evaluator.judge_model
+    arg_model = args.get("model")
+    
+    if env_model and env_model != "unknown":
+        model = env_model
+    elif arg_model and arg_model != "unknown":
+        model = arg_model
+    else:
+        model = "unknown"
     modified_files = args.get("modified_files", [])
     tool_call_log = args.get("tool_call_log", [])
     use_accumulated = args.get("use_accumulated_context", True)
@@ -54,17 +64,29 @@ def evaluate_response_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         context=full_context,
         tools_available=tools_available,
         tools_used=tools_used,
+        model=model,
         modified_files=modified_files,
         tool_call_log=tool_call_log
     )
 
-    # Calculate overall score from evaluation results
+    # Extract scores from unified evaluation results
     hallucination_score = evaluation.get("hallucination_score", 1.0)
     tool_consistency_score = evaluation.get("tool_consistency_score", 1.0)
     petri_score = evaluation.get("petri_score", 1.0)
-    overall_score = (hallucination_score + tool_consistency_score + petri_score) / 3
 
-    # Build result from Inspect AI evaluation
+    # Use the pre-calculated overall score from evaluator, or compute if missing
+    overall_score = evaluation.get("overall_score",
+        (hallucination_score + tool_consistency_score + petri_score) / 3
+    )
+
+    # Extract petri_eval nested data
+    petri_eval = evaluation.get("petri_eval", {})
+    petri_dimensions = petri_eval.get("dimensions", [])
+    critical_issues = petri_eval.get("critical_issues", []) or evaluation.get("warnings", [])
+    recommendations = petri_eval.get("recommendations", []) or evaluation.get("suggestions", [])
+    petri_evidence = petri_eval.get("evidence", {})
+
+    # Build result from unified evaluation
     result = {
         "timestamp": datetime.now().isoformat(),
         "model": model,
@@ -73,22 +95,23 @@ def evaluate_response_handler(args: Dict[str, Any]) -> Dict[str, Any]:
         "dimensions": {
             "hallucination": {
                 "score": hallucination_score,
-                "explanation": evaluation.get("hallucination_explanation", "")
+                "explanation": petri_evidence.get("hallucination", {}).get("score_rationale", "")
             },
             "tool_consistency": {
                 "score": tool_consistency_score,
-                "explanation": evaluation.get("tool_consistency_explanation", "")
+                "explanation": petri_evidence.get("tool_consistency", {}).get("score_rationale", "")
             },
             "petri_evaluation": {
                 "score": petri_score,
-                "explanation": evaluation.get("petri_explanation", ""),
-                "dimensions": evaluation.get("petri_dimensions", []),
-                "critical_issues": evaluation.get("petri_issues", []),
-                "recommendations": evaluation.get("petri_recommendations", [])
+                "explanation": petri_eval.get("summary", ""),
+                "dimensions": petri_dimensions,
+                "raw_scores": petri_eval.get("raw_scores", {}),
+                "critical_issues": critical_issues,
+                "recommendations": recommendations
             }
         },
-        "warnings": evaluation.get("petri_issues", []),
-        "suggestions": evaluation.get("petri_recommendations", []),
+        "warnings": critical_issues,
+        "suggestions": recommendations,
         "pass": overall_score >= settings.evaluator.pass_threshold
     }
 
@@ -113,65 +136,84 @@ def evaluate_response_handler(args: Dict[str, Any]) -> Dict[str, Any]:
 
 def check_hallucinations_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Quick hallucination check handler.
+    Quick hallucination check using unified evaluation.
 
     Args:
-        args: Tool arguments including response and strict_mode.
+        args: Tool arguments including response and context.
 
     Returns:
-        Hallucination check results.
+        Hallucination check results extracted from unified evaluation.
     """
     session = get_session()
 
     response = args["response"]
-    strict_mode = args.get("strict_mode", False)
+    context = args.get("context", "")
 
-    hallucinations = session.evaluator.detect_hallucinations(
+    # Run unified evaluation
+    evaluation = session.evaluator.evaluate_comprehensive(
         response=response,
-        strict=strict_mode
+        context=context
     )
 
+    # Extract hallucination-specific data
+    petri_eval = evaluation.get("petri_eval", {})
+    evidence = petri_eval.get("evidence", {})
+    hallucination_evidence = evidence.get("hallucination", {})
+    hallucination_issues = hallucination_evidence.get("issues", [])
+    hallucination_score = evaluation.get("hallucination_score", 1.0)
+
     return {
-        "hallucinations_found": len(hallucinations),
-        "hallucinations": hallucinations,
+        "hallucination_score": hallucination_score,
+        "hallucinations_found": len(hallucination_issues),
+        "hallucinations": hallucination_issues,
+        "explanation": hallucination_evidence.get("score_rationale", ""),
         "risk_level": (
-            "high" if len(hallucinations) > 3
-            else "medium" if len(hallucinations) > 0
+            "high" if hallucination_score < 0.5
+            else "medium" if hallucination_score < 0.7
             else "low"
         ),
-        "summary": f"Found {len(hallucinations)} potential hallucination(s)"
+        "summary": f"Hallucination score: {hallucination_score:.2f} - Found {len(hallucination_issues)} issue(s)"
     }
 
 
 def verify_tool_consistency_handler(args: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Verify tool usage consistency handler.
+    Verify tool usage consistency using unified evaluation.
 
     Args:
         args: Tool arguments including response, tools_available, tools_used.
 
     Returns:
-        Tool consistency check results.
+        Tool consistency check results extracted from unified evaluation.
     """
     session = get_session()
 
     response = args["response"]
-    tools_available = args["tools_available"]
-    tools_used = args["tools_used"]
+    tools_available = args.get("tools_available", [])
+    tools_used = args.get("tools_used", [])
+    context = args.get("context", "")
 
-    issues = session.evaluator.verify_tool_consistency(
+    # Run unified evaluation
+    evaluation = session.evaluator.evaluate_comprehensive(
         response=response,
+        context=context,
         tools_available=tools_available,
         tools_used=tools_used
     )
 
+    # Extract tool consistency data
+    petri_eval = evaluation.get("petri_eval", {})
+    evidence = petri_eval.get("evidence", {})
+    tool_evidence = evidence.get("tool_consistency", {})
+    tool_issues = tool_evidence.get("issues", [])
+    tool_score = evaluation.get("tool_consistency_score", 1.0)
+
     return {
-        "consistent": len(issues) == 0,
-        "issues": issues,
-        "tools_mentioned_not_used": [
-            i["tool"] for i in issues if i["type"] == "mentioned_not_used"
-        ],
-        "summary": f"Found {len(issues)} tool consistency issue(s)"
+        "tool_consistency_score": tool_score,
+        "consistent": tool_score >= 0.7,
+        "issues": tool_issues,
+        "explanation": tool_evidence.get("score_rationale", ""),
+        "summary": f"Tool consistency score: {tool_score:.2f} - Found {len(tool_issues)} issue(s)"
     }
 
 

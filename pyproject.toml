@@ -3,14 +3,14 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "eval-framework"
-version = "0.1.0"
+name = "eval"
+version = "0.4.0"
 description = "A comprehensive framework for evaluating AI responses using Inspect AI and Petri patterns"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.10"
 authors = [
-    {name = "AI Evaluator Team"}
+    {name = "Eval Team"}
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -43,12 +43,12 @@ dev = [
 ]
 
 [project.scripts]
-eval-framework = "eval_framework.cli:main"
-eval-server = "eval_framework.server.app:main"
+eval-cli = "eval.cli:main"
+eval-server = "eval.server.app:main"
 
 [project.urls]
-"Homepage" = "https://github.com/yourusername/eval-framework"
-"Bug Tracker" = "https://github.com/yourusername/eval-framework/issues"
+"Homepage" = "https://github.com/yourusername/eval"
+"Bug Tracker" = "https://github.com/yourusername/eval/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

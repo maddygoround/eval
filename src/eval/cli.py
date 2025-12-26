@@ -36,7 +36,7 @@ def main():
     args = parser.parse_args()
 
     if args.command == "server":
-        print("Starting AI Evaluator MCP Server...")
+        print("Starting AI Evaluator MCP Server...", file=sys.stderr)
         asyncio.run(run_server())
 
     elif args.command == "version":

@@ -1,5 +1,7 @@
 """
-Data models for evaluation results and related structures.
+Common type definitions for the evaluation framework.
+
+This module contains data models for evaluation results and related structures.
 """
 
 from dataclasses import dataclass, field
@@ -95,6 +97,8 @@ class EvaluationResult:
     warnings: List[str] = field(default_factory=list)
     suggestions: List[str] = field(default_factory=list)
     passed: bool = False
+    response: str = ""
+    context: str = ""
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -116,6 +120,8 @@ class EvaluationResult:
             "warnings": self.warnings,
             "suggestions": self.suggestions,
             "pass": self.passed,
+            "response": self.response,
+            "context": self.context,
         }
 
 

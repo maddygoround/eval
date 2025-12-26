@@ -2,8 +2,8 @@
 MCP Server module for AI Evaluator Framework.
 
 Import from submodules directly:
-    from eval_framework.server.app import create_server, run_server
-    from eval_framework.server.handlers import evaluate_response_handler
+    from eval.server.app import create_server, run_server
+    from eval.server.handlers import evaluate_response_handler
 """
 
 # Lazy imports to avoid circular import warnings when running as __main__

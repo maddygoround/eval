@@ -4,7 +4,7 @@ Helper functions for the AI Evaluator Framework.
 
 from typing import Any, Dict, List
 
-from ..config.settings import settings
+from .config.settings import settings
 
 
 def get_risk_level(score: float) -> str:
@@ -64,104 +64,28 @@ def collect_warnings(evaluation: Dict[str, Any]) -> List[str]:
     return warnings
 
 
-def generate_suggestions(
-    evaluation: Dict[str, Any],
-    judge_result: Dict[str, Any]
-) -> List[str]:
+def generate_session_recommendations(session_info: Dict[str, Any]) -> List[str]:
     """
-    Generate actionable suggestions based on evaluation.
+    Generate recommendations based on session history.
 
     Args:
-        evaluation: The evaluation result dictionary.
-        judge_result: The Petri judge result dictionary.
+        session_info: The session information dictionary.
 
     Returns:
-        List of suggestion messages.
+        List of recommendation strings.
     """
-    suggestions = []
-
-    # Hallucination suggestions
-    if evaluation.get("hallucinations"):
-        suggestions.append(
-            "Add evidence/sources for claims or use more cautious language"
-        )
-        suggestions.append(
-            "Consider adding tool calls to verify facts before stating them"
-        )
-
-    # Tool consistency suggestions
-    tool_mismatches = evaluation.get("tool_mismatches", [])
-    for mismatch in tool_mismatches:
-        tool_name = mismatch.get("tool", "unknown tool")
-        suggestions.append(
-            f"Actually call {tool_name} before claiming results from it"
-        )
-
-    # Context consistency suggestions
-    if evaluation.get("contradictions"):
-        suggestions.append(
-            "Review conversation history to ensure consistency"
-        )
-
-    # Judge-based suggestions
-    judge_score = judge_result.get("score", 1.0)
-    if judge_score < settings.evaluator.pass_threshold:
-        summary = judge_result.get("summary", "Quality issues detected")
-        suggestions.append(f"Judge identified issues: {summary}")
-
-    # Add recommendations from judge
-    recommendations = judge_result.get("recommendations", [])
-    for rec in recommendations[:3]:  # Limit to 3
-        suggestions.append(rec)
-
-    return suggestions
-
-
-def generate_session_recommendations(
-    evaluations: List[Dict[str, Any]]
-) -> List[str]:
-    """
-    Generate session-level recommendations.
-
-    Args:
-        evaluations: List of evaluation results from the session.
-
-    Returns:
-        List of recommendation messages.
-    """
-    if not evaluations:
-        return []
-
     recommendations = []
+    evaluations = session_info.get("evaluations", [])
 
-    # Calculate average hallucination score (lower = more hallucinations)
-    avg_hallucination_score = sum(
-        e.get("dimensions", {}).get("hallucination", {}).get("score", 1.0)
-        for e in evaluations
-    ) / len(evaluations)
+    if not evaluations:
+        return recommendations
 
-    if avg_hallucination_score < 0.6:
-        recommendations.append(
-            "High hallucination rate detected - consider stricter system prompts or different model"
-        )
-
-    # Tool consistency score
-    avg_tool_score = sum(
-        e.get("dimensions", {}).get("tool_consistency", {}).get("score", 1.0)
-        for e in evaluations
-    ) / len(evaluations)
-
-    if avg_tool_score < 0.7:
-        recommendations.append(
-            "Frequent tool consistency issues - review tool calling logic"
-        )
-
-    # Petri evaluation critical issues
+    # Check trends
     total_critical = sum(
-        len(e.get("dimensions", {}).get("petri_evaluation", {}).get("critical_issues", []))
+        len(e.get("petri_eval", {}).get("critical_issues", []))
         for e in evaluations
     )
-    if total_critical > 0:
+    if total_critical > 3:
         recommendations.append(
             f"Found {total_critical} critical issue(s) across evaluations - review petri assessment"
         )

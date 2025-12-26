@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional
 from datetime import datetime
 import anthropic
 
-from ..config.settings import settings
-from ..models.evaluation import Interaction
+from .config.settings import settings
+from .types import Interaction
 
 
 class ContextManager:
@@ -55,122 +55,102 @@ class ContextManager:
         self.compacted_history: str = ""
         self.context_version: int = 0
 
-    def add_interaction(
-        self,
-        context: str,
-        response: str,
-        evaluation_summary: str = ""
-    ) -> None:
+    def add_interaction(self, context: str, response: str, evaluation_summary: str = "") -> None:
         """
-        Add a new interaction to the session history.
+        Add a new interaction (context + response) to history.
 
         Args:
-            context: The context for this interaction.
-            response: The response generated.
-            evaluation_summary: Summary of evaluation results.
+            context: The context provided for the interaction.
+            response: The AI response generated.
+            evaluation_summary: Optional summary of the evaluation result.
         """
-        # Truncate long responses to save space
-        truncated_response = (
-            response[:500] + "..."
-            if len(response) > 500
-            else response
-        )
-
         interaction = {
             "timestamp": datetime.now().isoformat(),
             "context": context,
-            "response": truncated_response,
+            "response": response,
             "evaluation_summary": evaluation_summary,
             "index": len(self.history)
         }
         self.history.append(interaction)
-
-        # Check if compaction is needed
-        if self._needs_compaction():
-            self._compact_history()
+        self._check_compaction()
 
     def get_accumulated_context(self) -> str:
         """
-        Get the full accumulated context for evaluation.
-
-        Combines compacted history summary with recent interactions.
+        Get the full accumulated context (compacted + recent).
 
         Returns:
-            Combined context string.
+            String containing the accumulated context.
         """
         parts = []
 
-        # Add compacted history summary if exists
         if self.compacted_history:
-            parts.append(
-                f"[Previous Session Context Summary]\n{self.compacted_history}\n"
-            )
+            parts.append("### Previous Session Summary")
+            parts.append(self.compacted_history)
+            parts.append("")
 
-        # Add recent history items
-        recent_items = self.history[-self.keep_recent_items:]
-        if recent_items:
-            parts.append("[Recent Interactions]")
-            for item in recent_items:
-                context_preview = item['context'][:200] + "..." if len(item['context']) > 200 else item['context']
-                response_preview = item['response'][:200] + "..." if len(item['response']) > 200 else item['response']
-                parts.append(f"- Context: {context_preview}")
-                parts.append(f"  Response: {response_preview}")
-                if item.get("evaluation_summary"):
-                    parts.append(f"  Eval: {item['evaluation_summary']}")
+        if self.history:
+            parts.append("### Recent History")
+            for item in self.history:
+                parts.append(f"TS: {item['timestamp']}")
+                if item['context']:
+                    parts.append(f"Context: {item['context'][:200]}...")
+                parts.append(f"Response: {item['response']}")
+                if item['evaluation_summary']:
+                    parts.append(f"Eval: {item['evaluation_summary']}")
+                parts.append("---")
 
         return "\n".join(parts)
 
-    def _needs_compaction(self) -> bool:
-        """Check if context needs compaction."""
-        history_size = len(self.history)
-        context_chars = sum(
-            len(h.get("context", "")) + len(h.get("response", ""))
-            for h in self.history
-        )
+    def _check_compaction(self) -> None:
+        """Check if compaction is needed and trigger if so."""
+        should_compact = False
 
-        return (
-            history_size > self.max_history_items or
-            context_chars > self.max_context_chars
-        )
+        # Check item count
+        if len(self.history) > self.max_history_items:
+            should_compact = True
+
+        # Check character count (approximate)
+        current_chars = sum(len(str(item)) for item in self.history)
+        if current_chars > self.max_context_chars:
+            should_compact = True
+
+        if should_compact:
+            self._compact_history()
 
     def _compact_history(self) -> None:
-        """Compact older history into a summary using LLM."""
-        # Keep recent items separate
+        """
+        Compact older history items into a summary using LLM.
+        Keeps the most recent N items as raw history.
+        """
         keep_count = self.keep_recent_items
-        items_to_compact = (
-            self.history[:-keep_count]
-            if keep_count > 0
-            else self.history
-        )
-
-        if not items_to_compact:
+        if len(self.history) <= keep_count:
             return
 
-        # Build text to summarize
-        history_text = "\n\n".join([
-            f"Interaction {i+1}:\n- Context: {item['context']}\n- Response: {item['response']}\n- Eval: {item.get('evaluation_summary', 'N/A')}"
-            for i, item in enumerate(items_to_compact)
+        # Items to compact
+        to_compact = self.history[:-keep_count] if keep_count > 0 else self.history
+        
+        # Format for summarization
+        text_to_summarize = "\n\n".join([
+            f"Interaction {i}:\nContext: {item['context']}\nResponse: {item['response']}\nEval Result: {item['evaluation_summary']}"
+            for i, item in enumerate(to_compact)
         ])
 
         try:
-            # Create summary using LLM
+            # Call LLM to summarize
+            # We use a synchronous call here since this runs during the tool execution
+            # which is already in a thread or async context depending on the server
+            # Using the settings model or a specific cheap model for summarization
             result = self.client.messages.create(
                 model=settings.evaluator.compaction_model,
                 max_tokens=1000,
                 messages=[{
                     "role": "user",
-                    "content": f"""Summarize this conversation history concisely, preserving:
-1. Key topics discussed
-2. Important decisions or facts established
-3. Any issues or patterns identified in evaluations
-4. Tool usage patterns
-
-Keep the summary under {self.compaction_target_chars} characters.
+                    "content": f"""Summarize this interaction history effectively. Preserve key decisions, tool results, and evaluation warnings. The summary should be concise (max {self.compaction_target_chars} chars).
 
 History to summarize:
-{history_text}
+{text_to_summarize}
 
-Provide a concise summary:"""
+Concise summary:"""
                 }]
             )
 
