@@ -282,7 +282,8 @@ class Evaluator:
             return inspect_eval(
                 [unified_task],
                 model=settings.evaluator.judge_model,
-                log_dir=settings.evaluator.log_dir
+                log_dir=settings.evaluator.log_dir,
+                display='none'
             )
 
         # Execute
